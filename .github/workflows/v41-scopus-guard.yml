@@ -1,0 +1,91 @@
+name: V4.1 Scopus Guard
+
+on:
+  push:
+    paths:
+      - "src/search/**"
+      - "src/models/**"
+      - "tests/fixtures/v41/**"
+      - "tests/unit/test_v41_scopus_frozen_query.py"
+      - "tests/unit/test_search_strategy.py"
+      - "tests/unit/test_search_query_translation.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/v41-scopus-guard.yml"
+
+  pull_request:
+    paths:
+      - "src/search/**"
+      - "src/models/**"
+      - "tests/fixtures/v41/**"
+      - "tests/unit/test_v41_scopus_frozen_query.py"
+      - "tests/unit/test_search_strategy.py"
+      - "tests/unit/test_search_query_translation.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/v41-scopus-guard.yml"
+
+  workflow_dispatch:
+
+jobs:
+  v41-scopus-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Install project
+        run: uv sync --dev
+
+      - name: Verify frozen V4.1 fingerprint
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import yaml
+
+          fixture_path = Path("tests/fixtures/v41/scopus_v41.yaml")
+          expected = "4eadf13ccee5480c75103ed9000c7b101b69e6bdfa56fac4bcc34f360a28ee5b"
+
+          data = yaml.safe_load(
+              fixture_path.read_text(encoding="utf-8")
+          )
+
+          query = data["query"]
+          actual = hashlib.sha256(
+              query.encode("utf-8")
+          ).hexdigest()
+
+          print("Version :", data["version"])
+          print("Base    :", data["database"])
+          print("Expected:", expected)
+          print("Actual  :", actual)
+
+          assert data["version"] == "V4.1"
+          assert data["database"] == "scopus"
+          assert data["sha256"] == expected
+          assert actual == expected
+
+          print("V4.1 fingerprint: OK")
+          PY
+
+      - name: Run V4.1 regression guard
+        run: |
+          uv run pytest -q tests/unit/test_v41_scopus_frozen_query.py
+
+      - name: Run search regression suite
+        run: |
+          uv run pytest -q \
+            tests/unit/test_search_strategy.py \
+            tests/unit/test_search_query_translation.py \
+            tests/unit/test_v41_scopus_frozen_query.py

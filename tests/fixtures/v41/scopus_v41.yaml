@@ -1,0 +1,39 @@
+version: V4.1
+database: scopus
+validation:
+  population: 536
+  sentinels_recovered: 7/7
+sha256: 4eadf13ccee5480c75103ed9000c7b101b69e6bdfa56fac4bcc34f360a28ee5b
+query: TITLE-ABS-KEY("agentic system" OR "agentic systems" OR "agentic AI" OR "AI agent" OR "AI agents" OR "autonomous agent" OR "autonomous agents" OR "intelligent agent" OR "intelligent agents" OR "software agent" OR "software agents" OR "multi-agent system" OR "multi-agent systems" OR "multiagent system" OR "multiagent systems" OR "agent-oriented system" OR "agent-oriented systems" OR "agent-based system" OR "agent-based systems" OR "agent based system" OR "agent based systems") AND TITLE-ABS-KEY("operational exception" OR "operational exceptions" OR "process exception" OR "process exceptions" OR "workflow exception" OR "workflow exceptions" OR "exception management" OR "exception handling" OR "exception detection" OR "exception resolution" OR "exception recovery" OR "exception escalation" OR "anomaly handling" OR "escalation management" OR "operational decision" OR "operational decision-making" OR "operational decision making" OR "operational decision support" OR "process adaptation" OR "adaptive workflow" OR "dynamic workflow" OR "exception monitoring" OR "business process management") AND PUBYEAR > 1999 AND PUBYEAR < 2027
+review_config:
+  research_question: How are organizational agentic systems designed and governed to manage operational exceptions and support operational decision-making?
+  review_type: scoping
+  question_framework: pcc
+  pcc:
+    population: Organizations and organizational operational units using or studying agentic, intelligent, autonomous, software, or multi-agent systems
+    concept: Organizational agentic systems for operational exception management and operational decision-making
+    context: Organizational and enterprise operational settings
+  pico:
+    population: Organizations and organizational operational units
+    intervention: Organizational agentic systems for operational exception management and operational decision-making
+    comparison: Not applicable as the review is a scoping review using PCC
+    outcome: Architectures, exception-management mechanisms, autonomy, governance, human-agent roles, operational decisions, outcomes, and research gaps
+  keywords:
+  - agentic system
+  - AI agent
+  - multi-agent system
+  - operational exception
+  - operational decision-making
+  - business process management
+  domain: Design and governance of organizational agentic systems for operational exception management and operational decision-making.
+  scope: Scoping review of organizational agentic systems used to manage operational exceptions and support operational decision-making.
+  inclusion_criteria:
+  - Relevant scholarly studies of agentic or multi-agent systems in organizational operational contexts
+  exclusion_criteria:
+  - Studies without a substantive organizational operational dimension
+  date_range_start: 2000
+  date_range_end: 2026
+  target_databases:
+  - scopus
+  search_overrides:
+    scopus: TITLE-ABS-KEY("agentic system" OR "agentic systems" OR "agentic AI" OR "AI agent" OR "AI agents" OR "autonomous agent" OR "autonomous agents" OR "intelligent agent" OR "intelligent agents" OR "software agent" OR "software agents" OR "multi-agent system" OR "multi-agent systems" OR "multiagent system" OR "multiagent systems" OR "agent-oriented system" OR "agent-oriented systems" OR "agent-based system" OR "agent-based systems" OR "agent based system" OR "agent based systems") AND TITLE-ABS-KEY("operational exception" OR "operational exceptions" OR "process exception" OR "process exceptions" OR "workflow exception" OR "workflow exceptions" OR "exception management" OR "exception handling" OR "exception detection" OR "exception resolution" OR "exception recovery" OR "exception escalation" OR "anomaly handling" OR "escalation management" OR "operational decision" OR "operational decision-making" OR "operational decision making" OR "operational decision support" OR "process adaptation" OR "adaptive workflow" OR "dynamic workflow" OR "exception monitoring" OR "business process management") AND PUBYEAR > 1999 AND PUBYEAR < 2027
