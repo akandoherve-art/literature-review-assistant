@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,6 +15,17 @@ from src.db.repositories import WorkflowRepository
 from src.models import DecisionLogEntry, ReviewConfig, SearchResult
 from src.search.base import SearchConnector
 from src.search.deduplication import deduplicate_papers
+from src.search.query_translation import (
+    ConceptualQuery,
+    conceptual_from_terms,
+    parse_conceptual_query,
+    render_arxiv,
+    render_boolean,
+    render_crossref_keywords,
+    render_dblp,
+    render_semantic_scholar_bulk,
+    strip_boolean_syntax,
+)
 
 if TYPE_CHECKING:
     from src.orchestration.gates import GateRunner
@@ -114,6 +126,17 @@ def requires_primary_studies(config: ReviewConfig) -> bool:
     )
 
 
+_SOURCE_ALIASES = {
+    "wos": "web_of_science",
+    "clinicaltrials": "clinicaltrials_gov",
+}
+
+
+def _normalize_source(name: str) -> str:
+    key = str(name or "").strip().lower()
+    return _SOURCE_ALIASES.get(key, key)
+
+
 def build_boolean_query(config: ReviewConfig) -> str:
     # Use only keywords, NOT full PICO description strings.
     # PICO descriptions (intervention/outcome) are multi-sentence text that never
@@ -124,9 +147,120 @@ def build_boolean_query(config: ReviewConfig) -> str:
     return f"({keyword_part})"
 
 
+# Databases rendered from a shared conceptual boolean structure.
+TRANSLATED_DATABASES: frozenset[str] = frozenset({
+    "semantic_scholar",
+    "openalex",
+    "crossref",
+    "arxiv",
+    "dblp",
+    "core",
+})
+
+
+def _default_concept_query(config: ReviewConfig) -> ConceptualQuery:
+    kws = _keyword_terms(config, limit=16)
+    if not kws:
+        kws = [config.pico.intervention[:60]]
+    groups = [kws[:8], kws[8:16]] if len(kws) > 8 else [kws[:8]]
+    return conceptual_from_terms(groups)
+
+
+def _looks_native_syntax(name: str, query: str) -> bool:
+    q = query or ""
+    if name == "semantic_scholar":
+        return bool(re.search(r'(^|\s)[+|-](\s|\(|"|\w)', q)) and not re.search(r"\b(AND|OR)\b", q)
+    if name == "dblp":
+        return "|" in q and not re.search(r"\b(AND|OR)\b", q)
+    if name == "arxiv":
+        return bool(re.search(r"\b(all|ti|abs|au|cat):", q))
+    if name == "core":
+        return bool(re.search(r"\b(title|abstract|yearPublished|fullText):", q))
+    return False
+
+
+_CONCEPT_DONOR_ORDER: tuple[str, ...] = (
+    "openalex",
+    "semantic_scholar",
+    "core",
+    "ieee_xplore",
+    "dblp",
+    "crossref",
+    "arxiv",
+)
+
+
+def build_conceptual_query(
+    config: ReviewConfig,
+    database_name: str,
+) -> ConceptualQuery:
+    name = _normalize_source(database_name)
+    overrides = config.search_overrides or {}
+    override = overrides.get(name)
+
+    if override:
+        return parse_conceptual_query(override)
+
+    if name in TRANSLATED_DATABASES:
+        for donor in _CONCEPT_DONOR_ORDER:
+            donor_query = overrides.get(donor)
+            if donor_query and not _looks_native_syntax(donor, donor_query):
+                cq = parse_conceptual_query(donor_query)
+                if cq.is_structured:
+                    return cq
+        return _default_concept_query(config)
+
+    return parse_conceptual_query(build_database_query(config, name))
+
+
+def _has_concept_donor(config: ReviewConfig) -> bool:
+    overrides = config.search_overrides or {}
+    return any(
+        overrides.get(d)
+        and not _looks_native_syntax(d, overrides[d])
+        and parse_conceptual_query(overrides[d]).is_structured
+        for d in _CONCEPT_DONOR_ORDER
+    )
+
+
+def translate_conceptual_query(
+    cq: ConceptualQuery,
+    database_name: str,
+) -> str:
+    name = _normalize_source(database_name)
+
+    if not cq.is_structured:
+        raw = cq.raw or ""
+        return strip_boolean_syntax(raw) if name == "crossref" else raw
+
+    if name == "semantic_scholar":
+        return render_semantic_scholar_bulk(cq)
+    if name == "arxiv":
+        return render_arxiv(cq)
+    if name == "dblp":
+        return render_dblp(cq)
+    if name == "crossref":
+        return render_crossref_keywords(cq)
+
+    return render_boolean(cq)
+
+
+def _translated_query(config: ReviewConfig, name: str) -> str:
+    override = (config.search_overrides or {}).get(name)
+    if override and _looks_native_syntax(name, override):
+        return override
+    return translate_conceptual_query(
+        build_conceptual_query(config, name),
+        name,
+    )
+
+
 def build_database_query(config: ReviewConfig, database_name: str) -> str:
-    name = database_name.lower()
+    name = _normalize_source(database_name)
     primary_only = requires_primary_studies(config)
+
+    if name in TRANSLATED_DATABASES:
+        return _translated_query(config, name)
     if config.search_overrides:
         if name in config.search_overrides:
             if primary_only:
@@ -242,13 +376,18 @@ def build_database_query(config: ReviewConfig, database_name: str) -> str:
 
 def build_relaxed_database_query(config: ReviewConfig, database_name: str) -> str:
     """Build deterministic fallback query when first-pass recall is too low."""
-    name = database_name.lower()
+    name = _normalize_source(database_name)
     kws = _keyword_terms(config, limit=10)
     if not kws:
         return build_database_query(config, database_name)
     short = " ".join(kws[:6])
     or_terms = " OR ".join(f'"{k}"' for k in kws[:6])
-    if name in {"semantic_scholar", "openalex", "crossref", "perplexity_search", "arxiv", "dblp", "core"}:
+    if name in TRANSLATED_DATABASES:
+        return translate_conceptual_query(
+            conceptual_from_terms([kws[:6]]),
+            name,
+        )
+    if name == "perplexity_search":
         return short
     if name == "pubmed":
         return f"({or_terms})"
